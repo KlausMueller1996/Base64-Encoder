@@ -2,10 +2,6 @@
 # Diese .gitignore-Datei wurde von Microsoft(R) Visual Studio automatisch erstellt.
 ################################################################################
 
-/.vs/Base64-Encoder/FileContentIndex
-/.vs/Base64-Encoder/v17
 /.vs
-/base64_decode.obj
-/base64_encode.obj
-/main.exe
-/main.obj
+*.obj
+*.exe
