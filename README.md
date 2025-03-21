@@ -11,10 +11,17 @@ cl main.cpp base64_decode.obj base64_encode.obj
 ```
 
 ## how to  call
-calling sample is provided in main.c
+
+function signatures are:
+```
+void base64_decode(const char* encoded, const size_t input_len, char* output, const size_t output_size);
+void base64_encode(const char* input, const size_t input_len, char* output, const size_t output_size); 
+```
+
+sample code is provided in main.c
 
 ## implementation details
-The algorithm is defined in described at [Wikipedia](https://en.wikipedia.org/wiki/Base64). This implementation uses conversion table from [RFC 4648 §4](https://datatracker.ietf.org/doc/html/rfc4648#section-4). 
+The algorithm is described in detail at [Wikipedia](https://en.wikipedia.org/wiki/Base64). This implementation uses conversion table from [RFC 4648 §4](https://datatracker.ietf.org/doc/html/rfc4648#section-4). 
 
 ## remarks
 This is my first study of written Assembly code fox x64 architecture. Feel free to comment and give fedback.
