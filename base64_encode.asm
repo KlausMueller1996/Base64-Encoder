@@ -1,4 +1,3 @@
-
 option casemap:none
 
 .const
@@ -30,14 +29,12 @@ public base64_encode
 	;   r15: output index
 	; 
 	; returns: 
-	;	none;
+	;	number of chars written;
 	; 
 	; algorithm:
 	;   load 3 bytes from input. 
-	;		byte 4		????????
-	;		byte 2		33444444
-	;		byte 1		22223333
-	;		byte 0		11111122
+	;		byte 4		???????? 33444444 22223333 11111122
+	;
 	;   extract 6 bit blocks into al register using shifts, rotates and and
 	;	use al as index into the base 64 table
 	;   add output string depending on input length
@@ -72,13 +69,13 @@ convert_triplet_loop:
 		jbe		cleanup_and_exit			; so we have at least one byte left  and need to produce 2 output bytes 
 
 		mov		edx, dword ptr [rsi + r14]	; read 4 Bytes from source string into low dword part of rdx register
-
+											; eax = ???????? 33444444 22223333 11111122
 		;	calculate 1st result byte
 		mov		al, dl						; al = 11111122
 		shr		al, 2						; al = 00111111
 
 		xlat
-		mov		[rdi + r15], al
+		mov		byte ptr [rdi + r15], al
 		inc		r15							; increase output counter to point to next char
 
 		;	calculate 2nd result byte
@@ -87,7 +84,7 @@ convert_triplet_loop:
 		and		ax, 0000000000111111b
 
 		xlat
-		mov		[rdi + r15], al
+		mov		byte ptr [rdi + r15], al
 		inc		r15							; increase output counter to point to next char
 
 		inc		r14							; we need the third input byte to calculate the third output byte 
@@ -96,16 +93,13 @@ convert_triplet_loop:
 
 
 		;	calculate 3rd result byte
-		mov		ecx, edx					; ecx = ????????334444442222333311111122
-		shr		ecx, 6						; ecx = 000000????????334444442222333311
-		mov		al, cl						; al = 22333311
-		and		al, 00111100b				; al = 00333300
-		shr		ecx, 16						; ecx = 0000000000000000000000????????33
-		and		cl, 00000011b				; cl = 00000033
-		add		al, cl
+		shr		edx, 8						; edx = 00000000????????3344444422223333
+		mov		eax, edx					; eax = 00000000????????3344444422223333
+		rol		ax, 2						; ax = 4444442222333333
+		and		al, 00111111b				; ax = 4444442200333333 ; al = 00333333 , ah = 44444422
 
 		xlat
-		mov		[rdi+ r15], al
+		mov		byte ptr [rdi+ r15], al
 
 		inc		r15							; third output byte is calculated
 		inc		r14							; we need fourth input byte to calculate the fourth output byte 
@@ -114,12 +108,10 @@ convert_triplet_loop:
 
 		; calculate 4th result byte
 
-		mov		eax, edx					; eax = 334444442222333311111122
-		shr		eax, 16						; eax = 000000000000000033444444
-		and		al, 00111111b				; al = 00444444
+		shr		ax, 10						; ax = 0000000000444444
 
 		xlat
-		mov		[rdi+r15], al
+		mov		byte ptr [rdi+r15], al
 		inc		r15							; increase output counter to point to next char
 		inc		r14							; increase input counter to point to next char
 				
@@ -133,14 +125,18 @@ add_two_escape_chars:
 add_one_escape_char:
 
 		mov		byte ptr [rdi+r15], '='
+		inc		r15
 
 cleanup_and_exit:
 
-		pop	r13
-		pop r12
-		pop rsi
-		pop rdi
-		pop rbx
+		mov		byte ptr [rdi+r15], 0		; add trailing 0 to output string
+		mov		rax, r15					; return number of chars written
+
+		pop		r13
+		pop		r12
+		pop		rsi
+		pop		rdi
+		pop		rbx
 
 		ret 
 	base64_encode ENDP

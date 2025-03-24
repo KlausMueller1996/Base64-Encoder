@@ -6,7 +6,7 @@ You need to have Microsoft MASM and C++ Compiler installed.
 If you have Visual Studio on your machine open a "x64 native Tools Command Prompt" and enter the following to commands
 
 ```
-ml64 /c base64_encode.asm base64_decode.asm /subsystem:console
+ml64 /c base64_encode.asm base64_decode.asm 
 cl main.cpp base64_decode.obj base64_encode.obj
 ```
 

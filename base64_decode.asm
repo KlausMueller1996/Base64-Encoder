@@ -1,5 +1,33 @@
-
 option casemap:none
+
+.const
+	
+	; decoding_table using  
+	;	ascii(+) as starting value 
+	;	containg all chars in ascii order up to Z
+	;	chars not used in encoding table have a value of 0FFh 
+	; table has 50h entries
+
+							; '+' has index 3E in encoding table 
+	decoding_table			byte	 3Eh 
+							; ',-;' are not in encoding table
+							byte	0FFh, 0FFh, 0FFh
+							; 'index of /' in encoding table
+							byte	 3Fh				
+							; index of '0-9' in encoding table
+							byte	 34h, 035h, 036h, 037h, 038h, 039h, 3Ah, 3Bh, 3Ch, 3Dh	
+							; ':;<' are not in encoding table
+							byte	0FFh, 0FFh, 0FFh
+							; '=' is the padding char
+							byte	 00h 
+							; '>?@' are not in encoding table
+							byte	0FFh, 0FFh, 0FFh
+							; 'index of ''A'-'Z' in encoding table
+							byte	 00h, 01h, 02h, 03h, 04h, 05h, 06h, 07h, 08h, 09h, 0Ah, 0Bh, 0Ch, 0Dh, 0Eh, 0Fh, 10h, 11h, 12h, 13h, 14h, 15h, 16h, 17h, 18h, 19h
+							; '[\]^_`' are not in encoding table
+							byte	0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh 
+							; index of 'a'-'z' in encoding table
+							byte	 1Ah, 1Bh, 1Ch, 1Dh, 1Eh, 1Fh, 20h, 21h, 22h, 23h, 24h, 25h, 26h, 27h, 28h, 29h, 2Ah, 2Bh, 2Ch, 2Dh, 2Eh, 2Fh, 30h, 31h, 32h, 33h
 
 .code
 
@@ -9,88 +37,41 @@ public base64_decode
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; 
 	; arguments:
-	;	rcx: character to lookup
+	;   rcx: char to be converted
 	;
 	; register usage:
-	;	rax: for calculations
-	;	rcx: for comparisons
-	; 
+	;   rbx: base pointer to conversion table
+	;   
 	; returns: 
-	;	index value of char in base 64 conversion table;
-	;   -1 in case of an error 
-	; 
-	; algorithm:
-	;   base 64 conversion table is = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/"
-	;   calculate index in table of given char by calculations using ascii values instead of
-	;   iterating through table
-	;
-	;	if (value_to_find == '+')
-	;		return 62;
-	;	else if (value_to_find == '/')
-	;		return 63;
-	;	else if (value_to_find == '=')
-	;		return 0;
-	;	else if (value_to_find >= '0' && value_to_find  <= '9')
-	;		return value_to_find + 4 ; // - '0' + 52;
-	;	else if (value_to_find >= 'A' && value_to_find <= 'Z')
-	;		return value_to_find - 'A';
-	;	else if (value_to_find >= 'a' && value_to_find <= 'z')
-	;		return value_to_find - 'a' + 26;
-	;	return -1;
+	;	index of given char in base 64 encoding table
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 	reverse_lookup PROC
 
-		cmp		cl, '+'
-		jne		check_slash
-		mov		rax, 3Eh
-		ret
+		push	rbx					; save	rbx in case we get here, as rbx is nonvolatile
 
-check_slash:
-		cmp		cl, '/'
-		jne		check_equals
-		mov		rax, 3Fh
-		ret
+		mov		al, cl
+		sub		al, '+'				; '+' is the lowest value char in the base 64 encoded table, so it is value 0 in decoding table
+		jb		unknown_character	; if carry is set, al was less then '+'
 
-check_equals:
-		cmp		cl, '='
-		jne		check_number
-		mov		rax, 0
-		ret
-
-check_number:
-		cmp		cl, '0'
-		jb		check_capital_letter
-		cmp		cl, '9'
-		ja		check_capital_letter
-		movzx	rax, cl
-		add		rax, 4
-		ret
-
-check_capital_letter:
-		cmp		cl, 'A'
-		jb		check_non_capital_letter
-		cmp		cl, 'Z'
-		ja		check_non_capital_letter
-		movzx	rax, cl
-		sub		rax, 'A'
-		ret
-
-check_non_capital_letter:
-		cmp		cl, 'a'
-		jb		unknown_character
-		cmp		cl, 'z'
+		cmp		al, 4Fh				; we have a max of 50 chars in the lookup_table
 		ja		unknown_character
-		movzx	rax, cl
-		sub		rax, 47h
+
+		; load base adress of conversion table to rbx register, xlat requires pointer to conversion table being stored in rbx
+		lea		rbx, decoding_table
+
+		xlat
+
+		pop		rbx
 		ret
 	
 unknown_character:
-		mov		rax, 0ffh
+
+		pop		rbx
+		mov		rax, 0FFh
 		ret
 
 	reverse_lookup ENDP
-
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; 
@@ -109,7 +90,7 @@ unknown_character:
 	;   r14: output_ctr
 	;   
 	; returns: 
-	;	index value of char in base 64 conversion table 
+	;	size of return string including trailing zero 
 	; 
 	; algorithm:
 	;	void base64_decode(const char* input, const int input_len, uint8_t* output, const int output_len) {
@@ -129,8 +110,6 @@ unknown_character:
 	;		output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
 	;	}
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	
-
 
 	base64_decode PROC
 
@@ -194,6 +173,9 @@ input_loop:
 		cmp		r12, r13		
 		jb		input_loop
 
+		mov		byte ptr [r8 +r14], 0
+		mov		rax, r14
+
 		pop		r14
 		pop		r13
 		pop		r12
@@ -203,7 +185,5 @@ input_loop:
 		ret
 
 	base64_decode ENDP
-
-
 
 END
