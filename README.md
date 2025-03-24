@@ -14,8 +14,8 @@ cl main.cpp base64_decode.obj base64_encode.obj
 
 function signatures are:
 ```
-void base64_decode(const char* encoded, const size_t input_len, char* output, const size_t output_size);
-void base64_encode(const char* input, const size_t input_len, char* output, const size_t output_size); 
+size_t base64_decode(const char* encoded, const size_t input_len, char* output, const size_t output_size);
+size_t base64_encode(const char* input, const size_t input_len, char* output, const size_t output_size); 
 ```
 
 sample code is provided in main.c
@@ -31,4 +31,4 @@ This code is testes on Windows 10 and 11, not sure if this also works on Linux?
 
 - [ ] ensure that no more than output_size bytes are written
 - [x] ensure that output ends with a 0x00
-- [ ] base64_decode output size return value is to long in case input contains padding chars
+- [x] base64_decode output size return value is to long in case input contains padding chars

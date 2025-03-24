@@ -109,9 +109,19 @@ unknown_character:
 	;		tuple[3] = reverse_lookup(input[in_ctr++]);
 	;	
 	;		output[out_ctr++] = (uint8_t)(tuple[0] << 2) + (uint8_t)(tuple[1] >> 4);
+	;		if ( tuple[2] == 0)
+	;			break;
+	;
 	;		output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
+	;
+	;		if ( tuple[3] == 0)
+	;			break;
+	;
 	;		output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
-	;	}
+	;	  }
+	;	  output[out_ctr] = 0x00;
+	;     return out_ctr;
+	;  }
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 	base64_decode PROC
@@ -155,10 +165,9 @@ input_loop:
 		inc		r12
 		call	reverse_lookup
 
-		; if tuple[3] return 0 , i.e. is a padding char we can skip further processing
+		; if (tuple[2] == 0) break  ,tuple[2] is a padding char we can skip further processing
 		test	al, al			
 		jz		add_zero_and_leave
-
 		mov		bl, al		
 
 		;	output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
@@ -173,7 +182,7 @@ input_loop:
 		inc		r12
 		call	reverse_lookup
 
-		; if tuple[3] return 0 , i.e. is a padding char we can skip further processing
+		; if (tuple[3] == 0) break  ,tuple[2] is a padding char we can skip further processing
 		test	al, al			
 		jz		add_zero_and_leave
 
@@ -188,7 +197,10 @@ input_loop:
 
 add_zero_and_leave:
 
+		;	  output[out_ctr] = 0x00
 		mov		byte ptr [r8 +r14], 0
+
+		;     return out_ctr;
 		mov		rax, r14
 
 		pop		r14
