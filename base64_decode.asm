@@ -154,6 +154,11 @@ input_loop:
 		mov		cl, byte ptr[rsi+r12]				
 		inc		r12
 		call	reverse_lookup
+
+		; if tuple[3] return 0 , i.e. is a padding char we can skip further processing
+		test	al, al			
+		jz		add_zero_and_leave
+
 		mov		bl, al		
 
 		;	output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
@@ -168,6 +173,10 @@ input_loop:
 		inc		r12
 		call	reverse_lookup
 
+		; if tuple[3] return 0 , i.e. is a padding char we can skip further processing
+		test	al, al			
+		jz		add_zero_and_leave
+
 		;	output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
 		shl		bl, 6
 		add		al, bl
@@ -176,6 +185,8 @@ input_loop:
 
 		cmp		r12, r13		
 		jb		input_loop
+
+add_zero_and_leave:
 
 		mov		byte ptr [r8 +r14], 0
 		mov		rax, r14
