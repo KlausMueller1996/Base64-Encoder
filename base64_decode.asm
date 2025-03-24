@@ -48,13 +48,13 @@ public base64_decode
 
 	reverse_lookup PROC
 
-		push	rbx					; save	rbx in case we get here, as rbx is nonvolatile
+		push	rbx					; save rbx
 
 		mov		al, cl
 		sub		al, '+'				; '+' is the lowest value char in the base 64 encoded table, so it is value 0 in decoding table
-		jb		unknown_character	; if carry is set, al was less then '+'
+		jc		unknown_character	; if carry is set, al was less then '+'
 
-		cmp		al, 4Fh				; we have a max of 50 chars in the lookup_table
+		cmp		al, 4Fh				; we have 50 chars in the lookup_table, make sure we stay within this range
 		ja		unknown_character
 
 		; load base adress of conversion table to rbx register, xlat requires pointer to conversion table being stored in rbx
@@ -80,9 +80,12 @@ unknown_character:
 	;   rdx: input_len: Anzahl der zu konvertierenden Zeichen 
 	;        muss ein vielfaches der Zahl 4 sein
 	;   r8:  pointer to output structure
-	;   r9:  size of elements in output buffer
+	;   r9:  number of elements in output buffer
 	;
 	; register usage:
+	;	rax: calculations
+	;	rbx: temporary storage of tuple[0] and tuple[2]
+	;	rdx: temporary storage of tuple[1] and tuple[3]
 	;   rsi: pointer to input structure
 	;   rdi: pointer to output structure
 	;   r12: input_ctr
@@ -113,6 +116,7 @@ unknown_character:
 
 	base64_decode PROC
 
+		push	rbx
 		push	rsi
 		push	rdi
 		push	r12
@@ -181,6 +185,7 @@ input_loop:
 		pop		r12
 		pop		rdi
 		pop		rsi
+		pop		rbx
 
 		ret
 

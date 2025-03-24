@@ -30,4 +30,5 @@ This code is testes on Windows 10 and 11, not sure if this also works on Linux?
 ## TODO
 
 - [ ] ensure that no more than output_size bytes are written
-- [ ] ensure that output ends with a 0x00
+- [x] ensure that output ends with a 0x00
+- [ ] base64_decode output size return value is to long in case input contains padding chars
