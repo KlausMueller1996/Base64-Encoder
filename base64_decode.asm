@@ -16,12 +16,9 @@ option casemap:none
 							byte	 3Fh				
 							; index of '0-9' in encoding table
 							byte	 34h, 035h, 036h, 037h, 038h, 039h, 3Ah, 3Bh, 3Ch, 3Dh	
-							; ':;<' are not in encoding table
-							byte	0FFh, 0FFh, 0FFh
-							; '=' is the padding char
-							byte	 00h 
-							; '>?@' are not in encoding table
-							byte	0FFh, 0FFh, 0FFh
+							; ':;<=>?@' are not in encoding table. 
+							; Padding char '=' is treated as invalid char as we do not need to continue decoding after a '=' in input stream
+							byte	0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh, 0FFh
 							; 'index of ''A'-'Z' in encoding table
 							byte	 00h, 01h, 02h, 03h, 04h, 05h, 06h, 07h, 08h, 09h, 0Ah, 0Bh, 0Ch, 0Dh, 0Eh, 0Fh, 10h, 11h, 12h, 13h, 14h, 15h, 16h, 17h, 18h, 19h
 							; '[\]^_`' are not in encoding table
@@ -44,31 +41,30 @@ public base64_decode
 	;   
 	; returns: 
 	;	index of given char in base 64 encoding table
+	;	0FFh in case of padding char '=' or non mappable character
+	;
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
 	reverse_lookup PROC
 
 		push	rbx					; save rbx
 
-		mov		al, cl
-		sub		al, '+'				; '+' is the lowest value char in the base 64 encoded table, so it is value 0 in decoding table
+		mov		rax, 0FFh			; initial return value
+
+		sub		cl, '+'				; '+' is the lowest value char in the base 64 encoded table; chars below
 		jc		unknown_character	; if carry is set, al was less then '+'
 
-		cmp		al, 4Fh				; we have 50 chars in the lookup_table, make sure we stay within this range
+		cmp		cl, 4Fh				; we have 50 chars in the lookup_table, make sure we stay within this range
 		ja		unknown_character
 
-		; load base adress of conversion table to rbx register, xlat requires pointer to conversion table being stored in rbx
+		; load char into rax and base adress of conversion table to rbx register
+		mov		al, cl				
 		lea		rbx, decoding_table
-
 		xlat
-
-		pop		rbx
-		ret
 	
 unknown_character:
 
 		pop		rbx
-		mov		rax, 0FFh
 		ret
 
 	reverse_lookup ENDP
@@ -84,8 +80,8 @@ unknown_character:
 	;
 	; register usage:
 	;	rax: calculations
-	;	rbx: temporary storage of tuple[0] and tuple[2]
-	;	rdx: temporary storage of tuple[1] and tuple[3]
+	;	rcx: passing params to reverse_lookup
+	;	rdx: temporary storage of tuple[0] and tuple[2]
 	;   rsi: pointer to input structure
 	;   rdi: pointer to output structure
 	;   r12: input_ctr
@@ -108,13 +104,19 @@ unknown_character:
 	;		tuple[2] = reverse_lookup(input[in_ctr++]);
 	;		tuple[3] = reverse_lookup(input[in_ctr++]);
 	;	
+	;		if ( tuple[0] == -1)
+	;			break;
+	;		if ( tuple[1] == -1)
+	;			break;
+	;
 	;		output[out_ctr++] = (uint8_t)(tuple[0] << 2) + (uint8_t)(tuple[1] >> 4);
-	;		if ( tuple[2] == 0)
+	;
+	;		if ( tuple[2] == -1)
 	;			break;
 	;
 	;		output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
 	;
-	;		if ( tuple[3] == 0)
+	;		if ( tuple[3] == -1)
 	;			break;
 	;
 	;		output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
@@ -126,7 +128,6 @@ unknown_character:
 
 	base64_decode PROC
 
-		push	rbx
 		push	rsi
 		push	rdi
 		push	r12
@@ -141,66 +142,84 @@ unknown_character:
 
 input_loop:
 
-		;	bl = tuple[0] = reverse_lookup(input[in_ctr++]);
-		mov		cl, byte ptr[rsi+r12]				
-		inc		r12
-		call	reverse_lookup
-		mov		bl, al		
+		mov		edx, dword ptr[rsi+r12]		; load 4 input bytes into edx [input+3] [input+2] [input+1] [input]
 
-		;	al = dl = tuple[1] = reverse_lookup(input[in_ctr++]);
-		mov		cl ,byte ptr[rsi+r12]				
-		inc		r12
+				;	tuple[0] = reverse_lookup(input[in_ctr++]);
+		mov		cl, dl
 		call	reverse_lookup
-		mov		dl, al
 
-		;	output[out_ctr++] = (uint8_t)(tuple[0] << 2) + (uint8_t)(tuple[1] >> 4);
-		shl		bl, 2
+				;	if ( tuple[0] == -1) return;
+		cmp		al, 0FFh
+		jz		add_zero_and_leave
+
+		mov		dl, al						; store conversion result in edx register, overwriting the input value
+											; ebx = [input+3] [input+2] [input+1] [tuple_0]
+
+				;	tuple[1] = reverse_lookup(input[in_ctr++]);
+		mov		cl, dh
+		call	reverse_lookup
+
+				;	if ( tuple[1] == -1) return;
+		cmp		al, 0FFh
+		jz		add_zero_and_leave			; al = tuple[1]
+
+		mov		dh, al						; store conversion result in edx register, overwriting the input value
+											; edx = [input+3] [input+2] [tuple_1] [tuple_0]
+
+		mov		cl, dl						; al = tuple[1] ; cl = tuple[0]
+
+				;	output[out_ctr++] = (uint8_t)(tuple[0] << 2) + (uint8_t)(tuple[1] >> 4);
+		shl		cl, 2
 		shr		al, 4
-		add		al, bl
-		mov		byte ptr [r8 + r14], al
+		add		al, cl
+		mov		byte ptr [rdi + r14], al
 		inc		r14
 
-		;	al = bl = tuple[2] = reverse_lookup(input[in_ctr++]);
-		mov		cl, byte ptr[rsi+r12]				
-		inc		r12
+		shr		edx, 8						; edx = [00000000] [input+3] [input+2] [tuple_1]
+
+		mov		cl, dh				
 		call	reverse_lookup
 
-		; if (tuple[2] == 0) break  ,tuple[2] is a padding char we can skip further processing
-		test	al, al			
-		jz		add_zero_and_leave
-		mov		bl, al		
+				; if (tuple[2] == -1) break
+		cmp		al, 0FFh
+		jz		add_zero_and_leave			; al = [tuple_2]
 
-		;	output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
+		mov		dh, al						; edx = [00000000] [input+3] [tuple_2] [tuple_1]
+
+				;	output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
+											
 		shl		dl, 4
 		shr		al, 2
 		add		al, dl
-		mov		byte ptr [r8 +r14], al
+		mov		byte ptr [rdi + r14], al
 		inc		r14
 
-		;	al = tuple[3] = reverse_lookup(input[in_ctr++]);
-		mov		cl, byte ptr[rsi+r12]				
-		inc		r12
+		shr		edx, 8						; edx = [00000000] [00000000] [input+3] [tuple_2] 
+
+				;	al = tuple[3] = reverse_lookup(input[in_ctr++]);
+		mov		cl, dh 				
 		call	reverse_lookup
 
-		; if (tuple[3] == 0) break  ,tuple[2] is a padding char we can skip further processing
-		test	al, al			
-		jz		add_zero_and_leave
+				; if (tuple[3] == -1) break
+		cmp		al, 0FFh
+		jz		add_zero_and_leave			; al = tuple[3]
 
-		;	output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
-		shl		bl, 6
-		add		al, bl
-		mov		byte ptr [r8 +r14], al
+				;	output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
+		shl		dl, 6
+		add		al, dl
+		mov		byte ptr [rdi + r14], al
 		inc		r14
 
+		add		r12, 4
 		cmp		r12, r13		
 		jb		input_loop
 
 add_zero_and_leave:
 
-		;	  output[out_ctr] = 0x00
-		mov		byte ptr [r8 +r14], 0
+				;	  output[out_ctr] = 0x00
+		mov		byte ptr [rdi + r14], 0
 
-		;     return out_ctr;
+				;     return out_ctr;
 		mov		rax, r14
 
 		pop		r14
@@ -208,7 +227,6 @@ add_zero_and_leave:
 		pop		r12
 		pop		rdi
 		pop		rsi
-		pop		rbx
 
 		ret
 
