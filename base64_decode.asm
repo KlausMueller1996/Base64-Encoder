@@ -126,6 +126,11 @@ unknown_character:
 	;  }
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+	;
+	;	TODO: use stosb and loadb, 
+	;	incorporate index bounds check for input and output
+	;
+
 	base64_decode PROC
 
 		push	rsi
