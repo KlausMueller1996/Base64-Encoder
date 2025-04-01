@@ -1,12 +1,12 @@
 option casemap:none
 
+public base64_encode
+
 .const
 	
 	conversion_table		byte	'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/'
                    
 .code
-
-public base64_encode
 
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; 
@@ -30,8 +30,10 @@ public base64_encode
 	;
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
-	base64_encode PROC
-
+base64_encode PROC
+	;
+	;	STACK AND REGISTER PREPARATION
+	;
 		push	rbx
 		push	rdi
 		push	rsi
@@ -39,15 +41,16 @@ public base64_encode
 		mov		rsi, rcx
 		mov		rdi, rdx
 
-		; load base adress of conversion table to rbx register, xlat requires pointer to conversion table being stored in rbx
 		lea		rbx, conversion_table
 		
 		xor		rax, rax
 		xor		rdx, rdx
 		xor		r8, r8
 		cld
-
-convert_triplet_loop:
+	;
+	;	PROCESSING
+	;
+	convert_triplet_loop:
 
 		;	handle first input character
 		lodsb								; al = 11111122
@@ -98,7 +101,7 @@ convert_triplet_loop:
 				
 		jmp convert_triplet_loop
 
-two_padding_chars:
+	two_padding_chars:
 
 		mov		al, dl						; al = 11111122
 		shl		al, 4						; al = 11220000
@@ -113,7 +116,7 @@ two_padding_chars:
 		jmp		cleanup_and_exit
 
 	
-one_padding_char:
+	one_padding_char:
 											; ax = 00003333 00000000
 		shr		ax, 6						; ax = 00000000 00333300
 		xlat
@@ -122,8 +125,10 @@ one_padding_char:
 		mov		rax, '='
 		stosb	
 		add		r8, 2
-
-cleanup_and_exit:
+	;
+	;	CLEANUP
+	;
+	cleanup_and_exit:
 
 		xor		rax, rax
 		stosb
@@ -134,6 +139,6 @@ cleanup_and_exit:
 		pop		rbx
 
 		ret 
-	base64_encode ENDP
+base64_encode ENDP
 
 END

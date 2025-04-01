@@ -29,4 +29,4 @@ This code is testes on Windows 10 and 11, not sure if this also works on Linux?
 
 ## TODO
 
-- [ ] ensure that no more than output_size bytes are written
+- [ ] base64_encoder: ensure that no more than output_size bytes are written

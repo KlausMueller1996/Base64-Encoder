@@ -5,34 +5,12 @@
 #include <string>
 #include <array>
 
-extern "C"
-{
-	uint8_t reverse_lookup(const char value_to_find);
-	int base64_decode(const char* encoded, const size_t input_len, char* output, const size_t output_size);
-	int base64_encode(const char* input, const size_t input_len, char* output, const size_t output_size); 
-};
+#include "base64_encoder.h"
 
-void test_reverse_lookup()
-{
-	const char conversion_table[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-
-	for (int i = 0; i < 64; i++)
-	{
-		assert(i == reverse_lookup(conversion_table[i]));
-	}
-
-	assert(reverse_lookup('*') == 255);
-	assert(reverse_lookup(';') == 255);
-	assert(reverse_lookup('?') == 255);
-	assert(reverse_lookup('_') == 255);
-	assert(reverse_lookup('{') == 255);
-}
 
 int main(void) 
 {
 	constexpr size_t MAX_INDEX = 9;
-
-	test_reverse_lookup();
 
 	std::array<std::string, MAX_INDEX> plain = {
 		"Pol",
@@ -62,14 +40,42 @@ int main(void)
 	{
 		std::string result(200, 0x00);
 
-		const size_t rc_enc = base64_encode(plain[i].c_str(), plain[i].size(), &(result[0]), result.size());
+		const size_t rc_enc = base64_encode(&(plain[i][0]), &(result[0]));
 		result.resize(rc_enc);
 
-		assert(encoded[i].compare(result) == 0);
+		assert(encoded[i].compare(result)==0);
+	}
 
-		const size_t rc_dec = base64_decode(encoded[i].c_str(), encoded[i].size(), &(result[0]), result.size());
+	for (int i = 0; i < MAX_INDEX; i++)
+	{
+		std::string result(200, 0x00);
+
+		const size_t rc_dec = base64_decode(&(encoded[i][0]), encoded[i].size(), &(result[0]), result.size());
 		result.resize(rc_dec);
 
+		const int cmp = plain[i].compare(result);
 		assert(plain[i].compare(result) == 0);
+	}
+
+	{
+		std::string encoded = "TWFu";
+		std::string plain(4, 0x00);
+
+		assert(0 == base64_decode(NULL, encoded.size(), &(plain[0]), plain.size()));
+		assert(0 == base64_decode(&(encoded[0]), NULL, &(plain[0]), plain.size()));
+		assert(0 == base64_decode(&(encoded[0]), encoded.size(), NULL, plain.size()));
+		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), NULL));
+
+		assert(3 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
+		assert(0x00 == plain[3]);
+
+		plain.assign(3, 0x00);
+		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
+
+		plain.assign(2, 0x00);
+		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
+
+		plain.assign(1, 0x00);
+		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
 	}
 }

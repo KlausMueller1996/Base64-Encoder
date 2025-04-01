@@ -1,5 +1,7 @@
 option casemap:none
 
+public base64_decode
+
 .const
 	
 	; decoding_table using  
@@ -28,51 +30,10 @@ option casemap:none
 
 .code
 
-public reverse_lookup
-public base64_decode
-
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 	; 
 	; arguments:
-	;   rcx: char to be converted
-	;
-	; register usage:
-	;   rbx: base pointer to conversion table
-	;   
-	; returns: 
-	;	index of given char in base 64 encoding table
-	;	0FFh in case of padding char '=' or non mappable character
-	;
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-
-	reverse_lookup PROC
-
-		push	rbx					; save rbx
-
-		mov		rax, 0FFh			; initial return value
-
-		sub		cl, '+'				; '+' is the lowest value char in the base 64 encoded table; chars below
-		jc		unknown_character	; if carry is set, al was less then '+'
-
-		cmp		cl, 4Fh				; we have 50 chars in the lookup_table, make sure we stay within this range
-		ja		unknown_character
-
-		; load char into rax and base adress of conversion table to rbx register
-		mov		al, cl				
-		lea		rbx, decoding_table
-		xlat
-	
-unknown_character:
-
-		pop		rbx
-		ret
-
-	reverse_lookup ENDP
-
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; 
-	; arguments:
-	;   rcx: pointer to input structure - there should be 4 bytes available
+	;   rcx: pointer to input structure
 	;   rdx: input_len: Anzahl der zu konvertierenden Zeichen 
 	;        muss ein vielfaches der Zahl 4 sein
 	;   r8:  pointer to output structure
@@ -80,59 +41,38 @@ unknown_character:
 	;
 	; register usage:
 	;	rax: calculations
-	;	rcx: passing params to reverse_lookup
+	;	rbx: const pointer to conversion table
 	;	rdx: temporary storage of tuple[0] and tuple[2]
-	;   rsi: pointer to input structure
-	;   rdi: pointer to output structure
+	;   rsi: const pointer to input structure
+	;   rdi: const pointer to output structure
 	;   r12: input_ctr
 	;   r13: input_len
 	;   r14: output_ctr
 	;   
 	; returns: 
-	;	size of return string including trailing zero 
+	;	size of return string excluding trailing zero 
 	; 
-	; algorithm:
-	;	void base64_decode(const char* input, const int input_len, uint8_t* output, const int output_len) {
-	;	  int out_ctr = 0;
-	;	  int in_ctr = 0;
-	;	
- 	;	  while (in_ctr < input_len) {
-	;		char tuple[4] = { 0 };
-	;	
-	;		tuple[0] = reverse_lookup(input[in_ctr++]);
-	;		tuple[1] = reverse_lookup(input[in_ctr++]);
-	;		tuple[2] = reverse_lookup(input[in_ctr++]);
-	;		tuple[3] = reverse_lookup(input[in_ctr++]);
-	;	
-	;		if ( tuple[0] == -1)
-	;			break;
-	;		if ( tuple[1] == -1)
-	;			break;
-	;
-	;		output[out_ctr++] = (uint8_t)(tuple[0] << 2) + (uint8_t)(tuple[1] >> 4);
-	;
-	;		if ( tuple[2] == -1)
-	;			break;
-	;
-	;		output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
-	;
-	;		if ( tuple[3] == -1)
-	;			break;
-	;
-	;		output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
-	;	  }
-	;	  output[out_ctr] = 0x00;
-	;     return out_ctr;
-	;  }
 	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
 
+base64_decode PROC
 	;
-	;	TODO: use stosb and loadb, 
-	;	incorporate index bounds check for input and output
+	;	INPUT VALIDATION
 	;
+		; return 0 in case one of the input params is NULL
+		xor		rax, rax
 
-	base64_decode PROC
-
+		test	rcx, rcx
+		je		return
+		test	rdx, rdx
+		je		return
+		test	r8, r8
+		je		return
+		test	r9, r9
+		je		return
+	;
+	;	STACK AND REGISTER PREPARATION
+	;
+		push	rbx
 		push	rsi
 		push	rdi
 		push	r12
@@ -141,98 +81,190 @@ unknown_character:
 
 		mov		rsi, rcx
 		mov		rdi, r8
-		mov		r12, 0
+		xor		r12, r12
 		mov		r13, rdx
-		mov		r14, 0
+		xor		r14, r14
+		lea		rbx, decoding_table
+	;
+	;	PROCESSING
+	;
+	input_loop:
+		
+		;	clear values to avoid unintended side effects
 
-input_loop:
+		xor		rax, rax;
+		xor		rcx, rcx;
+		xor		rdx, rdx;
 
-		mov		edx, dword ptr[rsi+r12]		; load 4 input bytes into edx [input+3] [input+2] [input+1] [input]
+		;	read 4 bytes from input pointer at once
+		;	edx = [input+3] [input+2] [input+1] [input]
 
-				;	tuple[0] = reverse_lookup(input[in_ctr++]);
-		mov		cl, dl
-		call	reverse_lookup
+		mov		edx, dword ptr[rsi+r12]
 
-				;	if ( tuple[0] == -1) return;
+		;	convert first byte, 
+		;		ensure char is between '+' and '+' + 4F
+		;		convert char via table lookup
+		;		check if result is valid (1st & 2nd char in array may not be a padding char)
+		;		store conversion result in edx register, overwriting the input value
+		;		ebx = [input+3] [input+2] [input+1] [tuple_0]
+
+		mov		al, dl
+		sub		al, '+'				
+		jc		return_error		
+
+		cmp		al, 4Fh				
+		ja		return_error
+		
+		xlat
+
 		cmp		al, 0FFh
-		jz		add_zero_and_leave
+		jz		return_error
 
-		mov		dl, al						; store conversion result in edx register, overwriting the input value
-											; ebx = [input+3] [input+2] [input+1] [tuple_0]
+		mov		dl, al						
 
-				;	tuple[1] = reverse_lookup(input[in_ctr++]);
-		mov		cl, dh
-		call	reverse_lookup
+		;	convert second byte, 
+		;		ensure char is between '+' and '+' + 4F
+		;		convert char via table lookup
+		;		check if result is valid (1st & 2nd char in array may not be a padding char)
+		;		store conversion result in edx register, overwriting the input value
+		;		edx = [input+3] [input+2] [tuple_1] [tuple_0]
 
-				;	if ( tuple[1] == -1) return;
+		mov		al, dh
+
+		sub		al, '+'				
+		jc		return_error		
+
+		cmp		al, 4Fh				
+		ja		return_error
+		
+		xlat
+
 		cmp		al, 0FFh
-		jz		add_zero_and_leave			; al = tuple[1]
+		jz		return_error
 
-		mov		dh, al						; store conversion result in edx register, overwriting the input value
-											; edx = [input+3] [input+2] [tuple_1] [tuple_0]
+		mov		dh, al						
 
-		mov		cl, dl						; al = tuple[1] ; cl = tuple[0]
+		;	output = (tuple[0] << 2) + (tuple[1] >> 4);
 
-				;	output[out_ctr++] = (uint8_t)(tuple[0] << 2) + (uint8_t)(tuple[1] >> 4);
+		mov		cl, dl						
 		shl		cl, 2
 		shr		al, 4
 		add		al, cl
 		mov		byte ptr [rdi + r14], al
+
+		;	decrease output counter 
+		;	if we've reached end of output we replace last output char with 0 and return
+		;	otherwise increas output counter
+
+		dec		r9							
+		jz		return_error		
 		inc		r14
 
-		shr		edx, 8						; edx = [00000000] [input+3] [input+2] [tuple_1]
+		;	convert third byte, 
+		;		ensure char is between '+' and '+' + 4F
+		;		convert char via table lookup
+		;		check if result is valid or a padding char
+		;		store conversion result in edx register, overwriting the input value
+		;		edx = [00000000] [input+3] [tuple_2] [tuple_1]
 
-		mov		cl, dh				
-		call	reverse_lookup
+		shr		edx, 8						
 
-				; if (tuple[2] == -1) break
+		cmp		dh, '='
+		je		add_zero_and_prepare_result
+
+		mov		al, dh				
+		sub		al, '+'				
+		jc		return_error		
+
+		cmp		al, 4Fh				
+		ja		return_error
+		
+		xlat
+
 		cmp		al, 0FFh
-		jz		add_zero_and_leave			; al = [tuple_2]
+		jz		return_error
 
-		mov		dh, al						; edx = [00000000] [input+3] [tuple_2] [tuple_1]
+		mov		dh, al						
 
-				;	output[out_ctr++] = (uint8_t)(tuple[1] << 4) + (uint8_t)(tuple[2] >> 2);
-											
+		;	output = (tuple[1] << 4) + (tuple[2] >> 2);
+
 		shl		dl, 4
 		shr		al, 2
 		add		al, dl
 		mov		byte ptr [rdi + r14], al
+
+		;	decrease output counter 
+		;	if we've reached end of output we replace last output char with 0 and return
+		;	otherwise increas output counter
+
+		dec		r9
+		jz		return_error		
 		inc		r14
 
-		shr		edx, 8						; edx = [00000000] [00000000] [input+3] [tuple_2] 
+		;	convert fourth byte, 
+		;		check if it was valid
+		;		store conversion result in edx register, overwriting the input value
+		;		edx = [00000000] [00000000] [input+3] [tuple_2] 
 
-				;	al = tuple[3] = reverse_lookup(input[in_ctr++]);
-		mov		cl, dh 				
-		call	reverse_lookup
+		shr		edx, 8						
 
-				; if (tuple[3] == -1) break
+		cmp		dh, '='
+		je		add_zero_and_prepare_result
+
+		mov		al, dh 				
+		sub		al, '+'				
+		jc		return_error		
+
+		cmp		al, 4Fh				
+		ja		return_error
+		
+		xlat
+
 		cmp		al, 0FFh
-		jz		add_zero_and_leave			; al = tuple[3]
+		jz		return_error
 
-				;	output[out_ctr++] = (uint8_t)(tuple[2] << 6) + (uint8_t)(tuple[3]);
 		shl		dl, 6
 		add		al, dl
 		mov		byte ptr [rdi + r14], al
+
+		;	decrease output counter 
+		;	if we've reached end of output we replace last output char with 0 and return
+		;	otherwise increas output counter
+
+		dec		r9
+		jz		return_error		
 		inc		r14
+
+		;	increase output counter by 4 to read next quadrupel of input bytes
 
 		add		r12, 4
 		cmp		r12, r13		
 		jb		input_loop
 
-add_zero_and_leave:
+	add_zero_and_prepare_result:
+		;	add trailing zero and return output counter
 
-				;	  output[out_ctr] = 0x00
 		mov		byte ptr [rdi + r14], 0
-
-				;     return out_ctr;
 		mov		rax, r14
+		jmp		cleanup 
+
+	return_error:
+
+		xor		rax, rax
+
+	;
+	;	CLEANUP
+	;
+	cleanup:
 
 		pop		r14
 		pop		r13
 		pop		r12
 		pop		rdi
 		pop		rsi
+		pop		rbx
 
+	return:
 		ret
 
 	base64_decode ENDP
