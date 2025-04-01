@@ -152,9 +152,9 @@ base64_decode PROC
 		add		al, cl
 		mov		byte ptr [rdi + r14], al
 
-		;	decrease output counter 
-		;	if we've reached end of output we replace last output char with 0 and return
-		;	otherwise increas output counter
+		;	decrease available output bytes
+		;	check if we've reached end of output
+		;	increase input counter
 
 		dec		r9							
 		jz		return_error		
@@ -193,17 +193,18 @@ base64_decode PROC
 		add		al, dl
 		mov		byte ptr [rdi + r14], al
 
-		;	decrease output counter 
-		;	if we've reached end of output we replace last output char with 0 and return
-		;	otherwise increas output counter
+		;	decrease available output bytes
+		;	check if we've reached end of output
+		;	increase input counter
 
 		dec		r9
 		jz		return_error		
 		inc		r14
 
 		;	convert fourth byte, 
-		;		check if it was valid
-		;		store conversion result in edx register, overwriting the input value
+		;		ensure char is between '+' and '+' + 4F
+		;		convert char via table lookup
+		;		check if result is valid or a padding char
 		;		edx = [00000000] [00000000] [input+3] [tuple_2] 
 
 		shr		edx, 8						
@@ -227,9 +228,9 @@ base64_decode PROC
 		add		al, dl
 		mov		byte ptr [rdi + r14], al
 
-		;	decrease output counter 
-		;	if we've reached end of output we replace last output char with 0 and return
-		;	otherwise increas output counter
+		;	decrease available output bytes
+		;	check if we've reached end of output
+		;	increase input counter
 
 		dec		r9
 		jz		return_error		
