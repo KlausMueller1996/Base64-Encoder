@@ -14,6 +14,12 @@ cl main.cpp base64_decode.obj base64_encode.obj
 
 C style function signatures are defined in base64_encoder.h
 
+```
+unsigned long base64_encode(const char* plain_input, const unsigned long input_len, char* encoded_output, const unsigned long output_size);
+unsigned long base64_decode(const char* encoded_input, const unsigned long input_len, char* plain_output, const unsigned long output_size);
+```
+
+
 Sample code is provided in main.cpp
 
 ## implementation details
@@ -22,7 +28,3 @@ The algorithm is described in detail at [Wikipedia](https://en.wikipedia.org/wik
 ## remarks
 This is my first study of written Assembly code fox x64 architecture. Feel free to comment and give fedback.
 This code is testes on Windows 10 and 11, not sure if this also works on Linux?
-
-## TODO
-
-- [ ] base64_encoder: ensure that no more than output_size bytes are written

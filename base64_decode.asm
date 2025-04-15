@@ -30,36 +30,71 @@ public base64_decode
 
 .code
 
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
-	; 
-	; arguments:
-	;   rcx: pointer to input structure
-	;   rdx: input_len: Anzahl der zu konvertierenden Zeichen 
-	;        muss ein vielfaches der Zahl 4 sein
-	;   r8:  pointer to output structure
-	;   r9:  number of elements in output buffer
-	;
-	; register usage:
-	;	rax: calculations
-	;	rbx: const pointer to conversion table
-	;	rdx: temporary storage of tuple[0] and tuple[2]
-	;   rsi: const pointer to input structure
-	;   rdi: const pointer to output structure
-	;   r12: input_ctr
-	;   r13: input_len
-	;   r14: output_ctr
-	;   
-	; returns: 
-	;	size of return string excluding trailing zero 
-	; 
-	;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;;
+;#########################################################
+; 
+; arguments:
+;	single_byte_register: 1 byte register containing the charcter to be looked up
+;
+; details:
+;	check if char in given regsiter is valid  '=' < char < '=' + 4fh
+;	look up char in converson table and return result in single_byte_register
+;	jump to return_error in case anything goes wrong
+;
+; register usage:
+;	al
+;   
+;#########################################################
+
+lookup_char MACRO single_byte_register
+
+		mov		al, single_byte_register
+		sub		al, '+'				
+		jc		return_error		
+
+		cmp		al, 4Fh				
+		ja		return_error
+		
+		xlat
+
+		cmp		al, 0FFh
+		jz		return_error
+
+		mov		single_byte_register, al						
+
+ENDM
+
+;#########################################################
+; 
+; arguments:
+;   rcx: pointer to input structure
+;   rdx: input_len: Anzahl der zu konvertierenden Zeichen 
+;        muss ein vielfaches der Zahl 4 sein
+;   r8:  pointer to output structure
+;   r9:  number of elements in output buffer
+;
+; register usage:
+;	rax: calculations
+;	rbx: const pointer to conversion table
+;	rcx: temporary storage of tuple[0] and tuple[2]
+;	rdx: temporary storage of tuple[0] and tuple[2]
+;   rsi: const pointer to input structure
+;   rdi: const pointer to output structure
+;   r12: input_ctr
+;   r10: input_len
+;   r11: output_ctr
+;   
+; returns: 
+;	size of return string excluding trailing zero 
+;	0 in case of error
+; 
+;#########################################################
 
 base64_decode PROC
 	;
 	;	INPUT VALIDATION
 	;
-		; return 0 in case one of the input params is NULL
-		xor		rax, rax
+		
+		xor		rax, rax	; return 0 in case one of the input params is NULL
 
 		test	rcx, rcx
 		je		return
@@ -76,15 +111,13 @@ base64_decode PROC
 		push	rsi
 		push	rdi
 		push	r12
-		push	r13
-		push	r14
 
+		lea		rbx, decoding_table
 		mov		rsi, rcx
 		mov		rdi, r8
+		mov		r10, rdx
+		xor		r11, r11
 		xor		r12, r12
-		mov		r13, rdx
-		xor		r14, r14
-		lea		rbx, decoding_table
 	;
 	;	PROCESSING
 	;
@@ -102,47 +135,12 @@ base64_decode PROC
 		mov		edx, dword ptr[rsi+r12]
 
 		;	convert first byte, 
-		;		ensure char is between '+' and '+' + 4F
-		;		convert char via table lookup
-		;		check if result is valid (1st & 2nd char in array may not be a padding char)
-		;		store conversion result in edx register, overwriting the input value
-		;		ebx = [input+3] [input+2] [input+1] [tuple_0]
 
-		mov		al, dl
-		sub		al, '+'				
-		jc		return_error		
-
-		cmp		al, 4Fh				
-		ja		return_error
-		
-		xlat
-
-		cmp		al, 0FFh
-		jz		return_error
-
-		mov		dl, al						
+		lookup_char dl
 
 		;	convert second byte, 
-		;		ensure char is between '+' and '+' + 4F
-		;		convert char via table lookup
-		;		check if result is valid (1st & 2nd char in array may not be a padding char)
-		;		store conversion result in edx register, overwriting the input value
-		;		edx = [input+3] [input+2] [tuple_1] [tuple_0]
 
-		mov		al, dh
-
-		sub		al, '+'				
-		jc		return_error		
-
-		cmp		al, 4Fh				
-		ja		return_error
-		
-		xlat
-
-		cmp		al, 0FFh
-		jz		return_error
-
-		mov		dh, al						
+		lookup_char dh
 
 		;	output = (tuple[0] << 2) + (tuple[1] >> 4);
 
@@ -150,7 +148,8 @@ base64_decode PROC
 		shl		cl, 2
 		shr		al, 4
 		add		al, cl
-		mov		byte ptr [rdi + r14], al
+
+		mov		byte ptr [rdi + r11], al
 
 		;	decrease available output bytes
 		;	check if we've reached end of output
@@ -158,40 +157,22 @@ base64_decode PROC
 
 		dec		r9							
 		jz		return_error		
-		inc		r14
+		inc		r11
 
-		;	convert third byte, 
-		;		ensure char is between '+' and '+' + 4F
-		;		convert char via table lookup
-		;		check if result is valid or a padding char
-		;		store conversion result in edx register, overwriting the input value
-		;		edx = [00000000] [input+3] [tuple_2] [tuple_1]
+		;	convert third byte 
 
 		shr		edx, 8						
-
 		cmp		dh, '='
-		je		add_zero_and_prepare_result
+		je		prepare_result
 
-		mov		al, dh				
-		sub		al, '+'				
-		jc		return_error		
-
-		cmp		al, 4Fh				
-		ja		return_error
-		
-		xlat
-
-		cmp		al, 0FFh
-		jz		return_error
-
-		mov		dh, al						
+		lookup_char dh
 
 		;	output = (tuple[1] << 4) + (tuple[2] >> 2);
 
 		shl		dl, 4
 		shr		al, 2
 		add		al, dl
-		mov		byte ptr [rdi + r14], al
+		mov		byte ptr [rdi + r11], al
 
 		;	decrease available output bytes
 		;	check if we've reached end of output
@@ -199,34 +180,20 @@ base64_decode PROC
 
 		dec		r9
 		jz		return_error		
-		inc		r14
+		inc		r11
 
 		;	convert fourth byte, 
-		;		ensure char is between '+' and '+' + 4F
-		;		convert char via table lookup
-		;		check if result is valid or a padding char
 		;		edx = [00000000] [00000000] [input+3] [tuple_2] 
 
 		shr		edx, 8						
-
 		cmp		dh, '='
-		je		add_zero_and_prepare_result
+		je		prepare_result
 
-		mov		al, dh 				
-		sub		al, '+'				
-		jc		return_error		
-
-		cmp		al, 4Fh				
-		ja		return_error
-		
-		xlat
-
-		cmp		al, 0FFh
-		jz		return_error
+		lookup_char dh
 
 		shl		dl, 6
 		add		al, dl
-		mov		byte ptr [rdi + r14], al
+		mov		byte ptr [rdi + r11], al
 
 		;	decrease available output bytes
 		;	check if we've reached end of output
@@ -234,19 +201,18 @@ base64_decode PROC
 
 		dec		r9
 		jz		return_error		
-		inc		r14
+		inc		r11
 
-		;	increase output counter by 4 to read next quadrupel of input bytes
+		;	increase input counter by 4 to read next quadrupel of input bytes (if available)
 
 		add		r12, 4
-		cmp		r12, r13		
+		cmp		r12, r10		
 		jb		input_loop
 
-	add_zero_and_prepare_result:
+	prepare_result:
 		;	add trailing zero and return output counter
 
-		mov		byte ptr [rdi + r14], 0
-		mov		rax, r14
+		mov		rax, r11
 		jmp		cleanup 
 
 	return_error:
@@ -258,8 +224,6 @@ base64_decode PROC
 	;
 	cleanup:
 
-		pop		r14
-		pop		r13
 		pop		r12
 		pop		rdi
 		pop		rsi

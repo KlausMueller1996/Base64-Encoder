@@ -40,7 +40,8 @@ int main(void)
 	{
 		std::string result(200, 0x00);
 
-		const size_t rc_enc = base64_encode(&(plain[i][0]), &(result[0]));
+		const auto rc_enc = base64_encode(plain[i].data(), static_cast<unsigned long>(plain[i].size()), (char*) result.data(), static_cast<unsigned long>(result.size()));
+		assert(rc_enc > 0);
 		result.resize(rc_enc);
 
 		assert(encoded[i].compare(result)==0);
@@ -50,7 +51,8 @@ int main(void)
 	{
 		std::string result(200, 0x00);
 
-		const size_t rc_dec = base64_decode(&(encoded[i][0]), encoded[i].size(), &(result[0]), result.size());
+		const auto rc_dec = base64_decode(encoded[i].data(), static_cast<unsigned long>(encoded[i].size()), (char*) result.data(), static_cast<unsigned long>(result.size()));
+		assert(rc_dec > 0);
 		result.resize(rc_dec);
 
 		const int cmp = plain[i].compare(result);
@@ -61,21 +63,20 @@ int main(void)
 		std::string encoded = "TWFu";
 		std::string plain(4, 0x00);
 
-		assert(0 == base64_decode(NULL, encoded.size(), &(plain[0]), plain.size()));
-		assert(0 == base64_decode(&(encoded[0]), NULL, &(plain[0]), plain.size()));
-		assert(0 == base64_decode(&(encoded[0]), encoded.size(), NULL, plain.size()));
-		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), NULL));
+		assert(0 == base64_decode(NULL, static_cast<unsigned long>(encoded.size()), (char*) plain.data(), static_cast<unsigned long>(plain.size())));
+		assert(0 == base64_decode(encoded.data(), NULL, (char*) plain.data(), static_cast<unsigned long>(plain.size())));
+		assert(0 == base64_decode(encoded.data(), static_cast<unsigned long>(encoded.size()), NULL, static_cast<unsigned long>(plain.size())));
+		assert(0 == base64_decode(encoded.data(), static_cast<unsigned long>(encoded.size()), (char*) plain.data(), NULL));
 
-		assert(3 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
-		assert(0x00 == plain[3]);
-
+		assert(3 == base64_decode(encoded.data(), static_cast<unsigned long>(encoded.size()), (char*) plain.data(), static_cast<unsigned long>(plain.size())));
+		
 		plain.assign(3, 0x00);
-		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
+		assert(0 == base64_decode(encoded.data(), static_cast<unsigned long>(encoded.size()), (char*) plain.data(), static_cast<unsigned long>(plain.size())));
 
 		plain.assign(2, 0x00);
-		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
+		assert(0 == base64_decode(encoded.data(), static_cast<unsigned long>(encoded.size()), (char*) plain.data(), static_cast<unsigned long>(plain.size())));
 
 		plain.assign(1, 0x00);
-		assert(0 == base64_decode(&(encoded[0]), encoded.size(), &(plain[0]), plain.size()));
+		assert(0 == base64_decode(encoded.data(), static_cast<unsigned long>(encoded.size()), (char*) plain.data(), static_cast<unsigned long>(plain.size())));
 	}
 }
